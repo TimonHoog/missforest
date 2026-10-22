@@ -1,0 +1,399 @@
+---
+title: "missforest"
+format: html
+---
+
+```{r}
+start_time <- Sys.time()
+```
+
+```{r}
+library(missForest)
+library(mice)
+library(VIM)
+library(ISLR)
+library(ggplot2)
+library(tidyverse)
+library(survival)
+library(kernlab)
+```
+
+# Credit dataset
+
+```{r}
+# Original complete dataset
+data(Credit)
+credit_original <- Credit
+
+# Run one comparison for a particular missingness level
+compare_methods <- function(missing_rate, seed) {
+  
+  set.seed(seed)
+  
+  # Generate ONE dataset with missing values.
+  # All methods receive exactly this same dataset.
+  x_mis <- prodNA(credit_original, noNA = missing_rate)
+  
+  # 1. MissForest
+  set.seed(seed)
+  imp_missforest <- missForest(
+    x_mis,
+    maxiter = 10
+  )$ximp
+  
+  
+  # 2.. KNN
+  imp_knn <- VIM::kNN(
+    x_mis,
+    k = 5,
+    imp_var = FALSE
+  )
+  
+  # 4. MICE
+  set.seed(seed)
+  imp_mice <- mice(
+    x_mis,
+    m = 1,
+    maxit = 5,
+    printFlag = FALSE
+  )
+  imp_mice <- complete(imp_mice, 1)
+  
+  # Calculate errors at the artificially missing positions
+  methods <- list(
+    MissForest = imp_missforest,
+    KNN = imp_knn,
+    MICE = imp_mice
+  )
+  
+  results <- lapply(names(methods), function(method) {
+    
+    error <- mixError(
+      ximp = methods[[method]],
+      xmis = x_mis,
+      xtrue = credit_original
+    )
+    
+    data.frame(
+      Missing = missing_rate,
+      Method = method,
+      NRMSE = unname(error["NRMSE"]),
+      PFC = unname(error["PFC"])
+    )
+  })
+  
+  do.call(rbind, results)
+}
+
+# Run the experiments
+simulation_results <- list()
+counter <- 1
+
+for (rate in c(0.10, 0.20, 0.30)) {
+  for (sim in 1:50) {
+    
+    simulation_results[[counter]] <-
+      compare_methods(
+        missing_rate = rate,
+        seed = 81 + sim
+      )
+    
+    counter <- counter + 1
+  }
+}
+
+results <- do.call(rbind, simulation_results)
+
+# Display results
+print(results)
+```
+
+```{r}
+library(dplyr)
+
+average_results <- results %>%
+  group_by(Missing, Method) %>%
+  summarise(
+    NRMSE = mean(NRMSE, na.rm = TRUE),
+    PFC = mean(PFC, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(average_results)
+```
+
+```{r}
+library(tidyverse)   # ggplot2, dplyr, tidyr
+
+plot_data <- average_results %>%
+  pivot_longer(cols = c(NRMSE, PFC),
+               names_to = "Measure", values_to = "Error") %>%
+  mutate(Missing = factor(Missing, labels = paste0(sort(unique(Missing)) * 100, "% missing")))
+
+ggplot(plot_data, aes(x = Method, y = Error, fill = Measure)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  geom_text(aes(label = round(Error, 2)),
+            position = position_dodge(width = 0.8), vjust = -0.4, size = 3) +
+  facet_wrap(~ Missing) +
+  scale_fill_manual(values = c(NRMSE = "blue", PFC = "red")) +
+  labs(title = "Comparison of imputation methods, Credit dataset",
+       subtitle = "NRMSE (numeric variables) and PFC (categorical variables)",
+       x = NULL, y = "Error", fill = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+# Orange juice dataset
+
+```{r}
+# Original complete dataset
+data(OJ)
+OJ_original <- OJ
+
+# Run one comparison for a particular missingness level
+compare_methods <- function(missing_rate, seed) {
+  
+  set.seed(seed)
+  
+  # Generate ONE dataset with missing values.
+  # All methods receive exactly this same dataset.
+  x_mis <- prodNA(OJ_original, noNA = missing_rate)
+  
+  # 1. MissForest
+  set.seed(seed)
+  imp_missforest <- missForest(
+    x_mis,
+    maxiter = 10
+  )$ximp
+  
+  
+  # 2.. KNN
+  imp_knn <- VIM::kNN(
+    x_mis,
+    k = 5,
+    imp_var = FALSE
+  )
+  
+  # 4. MICE
+  set.seed(seed)
+  imp_mice <- mice(
+    x_mis,
+    m = 1,
+    maxit = 5,
+    printFlag = FALSE
+  )
+  imp_mice <- complete(imp_mice, 1)
+  
+  # Calculate errors at the artificially missing positions
+  methods <- list(
+    MissForest = imp_missforest,
+    KNN = imp_knn,
+    MICE = imp_mice
+  )
+  
+  results <- lapply(names(methods), function(method) {
+    
+    error <- mixError(
+      ximp = methods[[method]],
+      xmis = x_mis,
+      xtrue = OJ_original
+    )
+    
+    data.frame(
+      Missing = missing_rate,
+      Method = method,
+      NRMSE = unname(error["NRMSE"]),
+      PFC = unname(error["PFC"])
+    )
+  })
+  
+  do.call(rbind, results)
+}
+
+# Run the experiments
+simulation_results <- list()
+counter <- 1
+
+for (rate in c(0.10, 0.20, 0.30)) {
+  for (sim in 1:50) {
+    
+    simulation_results[[counter]] <-
+      compare_methods(
+        missing_rate = rate,
+        seed = 81 + sim
+      )
+    
+    counter <- counter + 1
+  }
+}
+
+results2 <- do.call(rbind, simulation_results)
+
+# Display results
+print(results2)
+```
+
+```{r}
+library(dplyr)
+
+average_results2 <- results2 %>%
+  group_by(Missing, Method) %>%
+  summarise(
+    NRMSE = mean(NRMSE, na.rm = TRUE),
+    PFC = mean(PFC, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(average_results2)
+```
+
+```{r}
+library(tidyverse)   # ggplot2, dplyr, tidyr
+
+plot_data <- average_results2 %>%
+  pivot_longer(cols = c(NRMSE, PFC),
+               names_to = "Measure", values_to = "Error") %>%
+  mutate(Missing = factor(Missing, labels = paste0(sort(unique(Missing)) * 100, "% missing")))
+
+ggplot(plot_data, aes(x = Method, y = Error, fill = Measure)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  geom_text(aes(label = round(Error, 2)),
+            position = position_dodge(width = 0.8), vjust = -0.4, size = 3) +
+  facet_wrap(~ Missing) +
+  scale_fill_manual(values = c(NRMSE = "blue", PFC = "red")) +
+  labs(title = "Comparison of imputation methods, orange juice dataset",
+       subtitle = "NRMSE (numeric variables) and PFC (categorical variables)",
+       x = NULL, y = "Error", fill = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+# Musk dataset
+
+```{r}
+# Original complete dataset
+data(musk)
+musk_original <- musk
+
+
+# Run one comparison for a particular missingness level
+compare_methods <- function(missing_rate, seed) {
+  
+  set.seed(seed)
+  
+  # Generate ONE dataset with missing values.
+  # All methods receive exactly this same dataset.
+  x_mis <- prodNA(musk_original, noNA = missing_rate)
+  
+  # 1. MissForest
+  set.seed(seed)
+  imp_missforest <- missForest(
+    x_mis,
+    maxiter = 10
+  )$ximp
+  
+  
+  # 2.. KNN
+  imp_knn <- VIM::kNN(
+    x_mis,
+    k = 5,
+    imp_var = FALSE
+  )
+  
+  # 4. MICE
+  set.seed(seed)
+  imp_mice <- mice(
+    x_mis,
+    m = 1,
+    maxit = 5,
+    printFlag = FALSE
+  )
+  imp_mice <- complete(imp_mice, 1)
+  
+  # Calculate errors at the artificially missing positions
+  methods <- list(
+    MissForest = imp_missforest,
+    KNN = imp_knn,
+    MICE = imp_mice
+  )
+  
+  results <- lapply(names(methods), function(method) {
+    
+    error <- mixError(
+      ximp = methods[[method]],
+      xmis = x_mis,
+      xtrue = musk_original
+    )
+    
+    data.frame(
+      Missing = missing_rate,
+      Method = method,
+      NRMSE = unname(error["NRMSE"]),
+      PFC = unname(error["PFC"])
+    )
+  })
+  
+  do.call(rbind, results)
+}
+
+# Run the experiments
+simulation_results <- list()
+counter <- 1
+
+for (rate in c(0.10, 0.20, 0.30)) {
+  for (sim in 1:5) {
+    
+    simulation_results[[counter]] <-
+      compare_methods(
+        missing_rate = rate,
+        seed = 81 + sim
+      )
+    
+    counter <- counter + 1
+  }
+}
+
+results4 <- do.call(rbind, simulation_results)
+
+# Display results
+print(results4)
+```
+
+```{r}
+library(dplyr)
+
+average_results4 <- results4 %>%
+  group_by(Missing, Method) %>%
+  summarise(
+    NRMSE = mean(NRMSE, na.rm = TRUE),
+    PFC = mean(PFC, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(average_results4)
+```
+
+```{r}
+library(tidyverse)   # ggplot2, dplyr, tidyr
+
+plot_data <- average_results4 %>%
+  pivot_longer(cols = c(NRMSE, PFC),
+               names_to = "Measure", values_to = "Error") %>%
+  mutate(Missing = factor(Missing, labels = paste0(sort(unique(Missing)) * 100, "% missing")))
+
+ggplot(plot_data, aes(x = Method, y = Error, fill = Measure)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  geom_text(aes(label = round(Error, 2)),
+            position = position_dodge(width = 0.8), vjust = -0.4, size = 3) +
+  facet_wrap(~ Missing) +
+  scale_fill_manual(values = c(NRMSE = "blue", PFC = "red")) +
+  labs(title = "Comparison of imputation methods, Musk dataset",
+       subtitle = "NRMSE (numeric variables) and PFC (categorical variables)",
+       x = NULL, y = "Error", fill = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+Sys.time() - start_time
+```
